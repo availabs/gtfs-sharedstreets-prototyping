@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Extracts the features from each matched geojson file as one ndjson stream,
+#   then sorts that stream by shape id, shape segment index, and SharedStreets reference ID.
+
+set -e
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo "ERROR: You must specify the sharedstreet match output directory path as the 1st and only CLI argument.")
+  exit 1
+fi
+
+SHST_MATCHED_DIR="$1"
+
+if [ ! -d "$1" ]; then
+  (>&2 echo "No directory found at $SHST_MATCHED_DIR")
+  exit 1
+fi
+
+jq -c '.features[]' "$SHST_MATCHED_DIR"/*.matched.geojson |
+  jq -s -c 'sort_by(
+    .properties.pp_shape_id,
+    .properties.pp_seg_idx,
+    .properties.shstReferenceId
+  )[]'
