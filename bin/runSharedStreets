@@ -10,6 +10,8 @@ const { sync: mkdirpSync } = require('mkdirp');
 
 const yargs = require('yargs');
 
+const TILE_HIERARCHY_LEVEL = 8;
+
 const cliArgsSpec = {
   shapesGeoJSON: {
     demand: true,
@@ -62,7 +64,7 @@ const outBase = basename(shapesGeoJSON, '.geojson');
           --snap-intersections \
           --match-motorway-only \
           --match-car \
-          --tile-hierarchy=8 \
+          --tile-hierarchy=${TILE_HIERARCHY_LEVEL} \
           --out="${outf}"
       `;
 
@@ -83,7 +85,7 @@ const outBase = basename(shapesGeoJSON, '.geojson');
           --snap-intersections \
           --match-surface-streets-only \
           --match-car \
-          --tile-hierarchy=8 \
+          --tile-hierarchy=${TILE_HIERARCHY_LEVEL} \
           --out="${outf}"
       `;
 

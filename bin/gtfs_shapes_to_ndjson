@@ -20,6 +20,14 @@ pipe(
       const { shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence } = d;
 
       if (shape_id !== curShapeId) {
+        if (shape_id < curShapeId) {
+          console.error(
+            'ERROR: Invariant broken. shape_id values not sorted alphanumerically.\n' +
+              '       Use the bin/sort_GTFS_shapes script to pre-process the GTFS shapes.txt file'
+          );
+          process.exit(1);
+        }
+
         if (curShapeId !== null) {
           const feature = lineString(coordinates);
 
@@ -42,7 +50,8 @@ pipe(
 
       if (+shape_pt_sequence <= prevShpPtSeq) {
         console.error(
-          'ERROR: Invariant broken. shape_pt_sequence values not monotonically increasing.'
+          'ERROR: Invariant broken. shape_pt_sequence values not monotonically increasing.' +
+            '       Use the bin/sort_GTFS_shapes script to pre-process the GTFS shapes.txt file'
         );
         process.exit(1);
       }

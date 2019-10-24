@@ -138,26 +138,64 @@ pipe(
     const osmNodes = _(osmMetadata.waySections)
       .map('nodeIds')
       .flatten()
-      .value();
+      .value()
+      .reduce((acc, nodeId) => {
+        if (nodeId !== _.last(acc)) {
+          acc.push(nodeId);
+        }
+        return acc;
+      }, []);
 
     const refCoords = forwardRef ? geomCoords : geomCoords.slice().reverse();
     const refNodes = forwardRef ? osmNodes : osmNodes.reverse();
 
+    // INVARIANT: geomCoords and osmNodes are parallel arrays
     if (refCoords.length !== refNodes.length) {
       console.warn('WARNING: refCoords.length !== refNodes.length');
+      console.warn(
+        JSON.stringify(
+          {
+            osmWaySectionsLength: osmMetadata.waySections.length,
+            refCoords,
+            refNodes
+          },
+          null,
+          4
+        )
+      );
       return cb();
     }
 
-    this.push(
-      `${JSON.stringify({
-        shstReferenceId,
-        refCoords,
-        refNodes,
-        shstGeometry,
-        osmMetadata,
-        shapeSegCoords
-      })}\n`
-    );
+    shpMetaAcc[shstReferenceId] = shpMetaAcc[shstReferenceId] || {};
+
+    const shpStartPt = _.first(shapeSegCoords);
+    const candidateStartIndices = refCoords.reduce((acc, refPt, i) => {
+      if (_.isEqual(shpStartPt, refPt)) {
+        acc.push(i);
+      }
+      return acc;
+    }, []);
+
+    // LEFT OFF HERE
+    // for (let i = 0; i < shapeSegCoords.length; ++i) {
+    // const shpPoint = shapeSegCoords[i]
+    // const ids
+    // }
+    // shpMetaAcc[shstReferenceId]
+
+    if (candidateStartIndices[0] !== 0 || candidateStartIndices.length > 1) {
+      this.push(
+        `${JSON.stringify({
+          shstReferenceId,
+          refCoords,
+          refNodes,
+          shstGeometry,
+          osmMetadata,
+          shapeSegCoords,
+          candidateStartIndices
+        })}\n`
+      );
+    }
 
     return cb();
   }),
