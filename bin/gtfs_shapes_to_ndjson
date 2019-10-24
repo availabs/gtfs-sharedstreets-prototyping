@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+
+const { pipe, through } = require('mississippi');
+const csv = require('fast-csv');
+const { lineChunk } = require('@turf/turf');
+const { lineString } = require('@turf/helpers');
+
+let curShapeId = null;
+let coordinates = null;
+let prevShpPtSeq = null;
+
+const MILES = { units: 'miles' };
+const CHUNK_SEG_LEN = 0.1;
+
+pipe(
+  process.stdin,
+  csv.parse({ headers: true }),
+  through.obj(function shapeCollector(d, _, cb) {
+    try {
+      const { shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence } = d;
+
+      if (shape_id !== curShapeId) {
+        if (curShapeId !== null) {
+          const feature = lineString(coordinates);
+
+          const { features } = lineChunk(feature, CHUNK_SEG_LEN, MILES);
+
+          for (let i = 0; i < features.length; ++i) {
+            const f = features[i];
+            f.properties = {
+              shape_id,
+              seg_idx: i,
+              seg_num: features.length
+            };
+            this.push(`${JSON.stringify(features[i])}\n`);
+          }
+        }
+        curShapeId = shape_id;
+        coordinates = [];
+        prevShpPtSeq = -1;
+      }
+
+      if (+shape_pt_sequence <= prevShpPtSeq) {
+        console.error(
+          'ERROR: Invariant broken. shape_pt_sequence values not monotonically increasing.'
+        );
+        process.exit(1);
+      }
+
+      coordinates.push([+shape_pt_lon, +shape_pt_lat]);
+      prevShpPtSeq = +shape_pt_sequence;
+
+      cb();
+    } catch (err) {
+      console.error(err);
+      process.exit(1);
+    }
+  }),
+  process.stdout
+);

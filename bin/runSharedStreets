@@ -1,0 +1,101 @@
+#!/usr/bin/env node
+
+/* eslint no-await-in-loop: 0, no-loop-func: 0, no-continue: 0 */
+
+const { execSync } = require('child_process');
+const { join, basename } = require('path');
+const { sync: rimrafSync } = require('rimraf');
+const { sync: mkdirpSync } = require('mkdirp');
+// const Diff = require('diff');
+
+const yargs = require('yargs');
+
+const cliArgsSpec = {
+  shapesGeoJSON: {
+    demand: true,
+    type: 'string'
+  },
+  outputDir: {
+    demand: true,
+    type: 'string'
+  },
+  clean: {
+    type: 'boolean',
+    description: 'Empty the outputDir before beginning.',
+    default: false
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { shapesGeoJSON, outputDir, clean } = argv;
+
+const dataDir = `${join(process.cwd(), outputDir)}/`;
+
+const shst = join(__dirname, '../node_modules/.bin/shst');
+
+if (clean) {
+  rimrafSync(dataDir);
+}
+
+mkdirpSync(dataDir);
+
+const outBase = basename(shapesGeoJSON, '.geojson');
+
+// const matchTypes = ['motorway', 'surface-streets'];
+
+(async () => {
+  try {
+    let inf = join(process.cwd(), shapesGeoJSON);
+    let outf = join(outputDir, `${outBase}.motorway.geojson`);
+
+    let cmd = `
+        ${shst} match "${inf}" \
+          --follow-line-direction \
+          --snap-intersections \
+          --match-motorway-only \
+          --match-car \
+          --tile-hierarchy=8 \
+          --out="${outf}"
+      `;
+
+    let stdout = execSync(cmd, {
+      shell: true,
+      stdio: ['pipe'],
+      cwd: join(__dirname, '../')
+    });
+
+    console.log(stdout.toString());
+
+    inf = outf.replace(/geojson$/, 'unmatched.geojson');
+    outf = join(outputDir, `${outBase}.surface-streets.geojson`);
+
+    cmd = `
+        ${shst} match "${inf}" \
+          --follow-line-direction \
+          --snap-intersections \
+          --match-surface-streets-only \
+          --match-car \
+          --tile-hierarchy=8 \
+          --out="${outf}"
+      `;
+
+    stdout = execSync(cmd, {
+      shell: true,
+      stdio: ['pipe'],
+      cwd: join(__dirname, '../')
+    });
+
+    console.log(stdout.toString());
+  } catch (err) {
+    console.log('STDERR');
+    console.error(err.toString());
+  }
+})();

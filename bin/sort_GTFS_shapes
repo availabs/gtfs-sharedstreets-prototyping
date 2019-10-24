@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# This script sorts the shapes.txt CSV by shape_id, then shape_pt_sequence.
+# Guaranteeing shape_pt_sequence order simplifies later processing.
+# This order is required in the GTFS spec, but we want a hard guarantee.
+#   
+
+set -e
+
+# Take the header row from STDIN
+read -r HEADER
+# Convert to lowecase
+HEADER="${HEADER,,}"
+# Send to STDOUT
+echo "$HEADER"
+
+# Get the shape_id column number
+SHAPE_ID_COL="$(
+  tr ',' '\n' <<< "$HEADER" |
+    nl |
+    grep 'shape_id' |
+    sed 's/^[[:space:]]*//; s/[[:space:]].*//'
+  )"
+
+# Get the shape_pt_sequence column number
+SHAPE_PT_SEQ_COL="$(
+  tr ',' '\n' <<< "$HEADER" |
+    nl |
+    grep 'shape_pt_sequence' |
+    sed 's/^[[:space:]]*//; s/[[:space:]].*//'
+  )"
+
+# For all further sort alphanumerically on the shape_id, then on the numerically on the shape_pt_sequence.
+sort -t, -k"${SHAPE_ID_COL}","${SHAPE_ID_COL}" -k"${SHAPE_PT_SEQ_COL}","${SHAPE_PT_SEQ_COL}"n

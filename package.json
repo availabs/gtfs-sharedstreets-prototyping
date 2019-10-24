@@ -22,6 +22,8 @@
     "fast-csv": "^3.4.0",
     "leveldown": "^5.4.0",
     "levelup": "^4.3.2",
+    "lodash": "^4.17.15",
+    "memoize-one": "^5.1.1",
     "mississippi": "^4.0.0",
     "mkdirp": "^0.5.1",
     "prettier": "^1.18.2",
