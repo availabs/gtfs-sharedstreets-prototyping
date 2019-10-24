@@ -1,0 +1,7 @@
+# Run sharedstreets match on the GTFS shapes
+./bin/runSharedStreets --shapesGeoJSON ./cdta.shapes.chunked.geojson --outputDir data/shst --clean
+
+# The sharedstreets output is in multiple GeoJSON files.
+#    The following extracts the features as NDJSON and sorts them by
+#    shape id, shape segment number, and shst ref id.
+./bin/concatShStMatchesIntoNDJSON data/shst > data/shst/cdta.matched.ndjson
