@@ -1,6 +1,6 @@
 # Project Wiki as Git Submodule
 
-[Including a github wiki in a repository as a submodule](https://brendancleary.com/2013/03/08/including-a-github-wiki-in-a-repository-as-a-submodule/)
+SEE: [Including a github wiki in a repository as a submodule](https://brendancleary.com/2013/03/08/including-a-github-wiki-in-a-repository-as-a-submodule/)
 
 ```
 cd docs
@@ -12,7 +12,7 @@ git commit -m "Added deliverables page."
 git push
 
 # Now got back to the partent project and do another commit that basically says,
-#   "I have updated the submodule which is in you, here is a pointer to the new version of the submodule."
+#    "Here is a pointer to the new version of the submodule which is in you."
 cd ../
 git commit -m "updated wiki."
 
