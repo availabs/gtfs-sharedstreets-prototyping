@@ -2,75 +2,12 @@
 
 /* eslint no-use-before-define: 0 */
 
-// const { createReadStream } = require('fs');
-const { join } = require('path');
 const { pipe, through } = require('mississippi');
 const split = require('split2');
-const memoizeOne = require('memoize-one');
-const _ = require('lodash');
-
-const levelup = require('levelup');
-const leveldown = require('leveldown');
-const encode = require('encoding-down');
-
-// const yargs = require('yargs');
-
-const JSON_ENC = { valueEncoding: 'json' };
-
-const SHST_GEOGRAPHY_DB = join(__dirname, '../data/leveldb/shstGeometry/');
-const SHST_METADATA_DB = join(__dirname, '../data/leveldb/shstMetadata/');
-
-const shstGeometryDB = levelup(encode(leveldown(SHST_GEOGRAPHY_DB), JSON_ENC));
-const shstMetadataDB = levelup(encode(leveldown(SHST_METADATA_DB), JSON_ENC));
-
-// Temporary LevelDB work database deleted on process exit.
-// const { dirSync: mkTmpDirSync } = require('tmp');
-// const { name: tmpDirPath } = mkTmpDirSync({ unsafeCleanup: true });
-// const workDB = levelup(encode(leveldown(tmpDirPath), JSON_ENC));
-
-// const cliArgsSpec = {
-// shstMatchesNDJSON: {
-// demand: true,
-// type: 'string'
-// }
-// };
-
-// const { argv } = yargs
-// .strict()
-// .parserConfiguration({
-// 'camel-case-expansion': false,
-// 'flatten-duplicate-arrays': false
-// })
-// .wrap(yargs.terminalWidth() / 1.618)
-// .option(cliArgsSpec);
-
-// const { shstMatchesNDJSON } = argv;
-
-const getShStGeometry = memoizeOne(async shstGeometryId => {
-  let shstGeometry = null;
-  try {
-    shstGeometry = await shstGeometryDB.get(shstGeometryId);
-  } catch (err) {
-    console.warn('WARNING: No metadata found for shstGeometry', shstGeometryId);
-  }
-
-  return shstGeometry;
-});
-
-const getOSMMetadata = memoizeOne(async shstGeometryId => {
-  let osmMetadata = null;
-  try {
-    ({ osmMetadata } = await shstMetadataDB.get(shstGeometryId));
-  } catch (err) {
-    // console.warn('WARNING: No metadata found for shstGeometry', shstGeometryId);
-  }
-
-  return osmMetadata;
-});
+const turfHelpers = require('@turf/helpers');
 
 let curShapeId = null;
-let curSegIdx = null;
-let shpMetaAcc = null;
+let shape_output_features = null;
 
 pipe(
   // createReadStream(shstMatchesNDJSON),
@@ -79,123 +16,50 @@ pipe(
   through.obj(async function loader(d, $, cb) {
     const {
       properties: {
-        pp_shape_id: shape_id,
-        pp_seg_idx: seg_idx,
+        pp_shape_id: gtfs_shape_id,
+        pp_seg_idx: gtfs_shape_seg_idx,
+        pp_seg_num: gtfs_shape_num_segs,
         shstGeometryId,
         shstReferenceId
       },
-      geometry: { coordinates: shapeSegCoords }
+      geometry: { coordinates: shstMatchCoords }
     } = d;
 
-    if (curShapeId !== shape_id) {
+    if (curShapeId !== gtfs_shape_id) {
       if (curShapeId) {
-        // TODO: output the shpMetaAcc
-      }
-
-      curShapeId = shape_id;
-      curSegIdx = -1;
-      shpMetaAcc = {};
-    }
-
-    if (curShapeId === shape_id && curSegIdx > seg_idx) {
-      console.error(
-        'ERROR: Invariant broken. Input features not sorted by shape_id, seg_idx.'
-      );
-      process.exit(1);
-    }
-
-    const shstGeometry = await getShStGeometry(shstGeometryId);
-    const osmMetadata = await getOSMMetadata(shstGeometryId);
-
-    if (!(shstGeometry && osmMetadata)) {
-      console.warn(
-        'WARNING: no metadata found for shstGeometry',
-        shstGeometryId
-      );
-      return cb();
-    }
-
-    const forwardRef =
-      shstReferenceId === shstGeometry.properties.forwardReferenceId;
-
-    if (
-      !(
-        forwardRef ||
-        shstReferenceId === shstGeometry.properties.backReferenceId
-      )
-    ) {
-      console.warn(
-        "WARNING: Error in ShSt output. GTFS Shape segment's shstRef not in the shstGeom's references. shstGeometryId:",
-        shstGeometryId
-      );
-      return cb();
-    }
-
-    const {
-      geometry: { coordinates: geomCoords }
-    } = shstGeometry;
-
-    const osmNodes = _(osmMetadata.waySections)
-      .map('nodeIds')
-      .flatten()
-      .value()
-      .reduce((acc, nodeId) => {
-        if (nodeId !== _.last(acc)) {
-          acc.push(nodeId);
+        if (curShapeId > gtfs_shape_id) {
+          console.error(
+            'ERROR: Invariant broken. Input features not sorted by gtfs_shape_id.'
+          );
+          process.exit(1);
         }
-        return acc;
-      }, []);
-
-    const refCoords = forwardRef ? geomCoords : geomCoords.slice().reverse();
-    const refNodes = forwardRef ? osmNodes : osmNodes.reverse();
-
-    // INVARIANT: geomCoords and osmNodes are parallel arrays
-    if (refCoords.length !== refNodes.length) {
-      console.warn('WARNING: refCoords.length !== refNodes.length');
-      console.warn(
-        JSON.stringify(
-          {
-            osmWaySectionsLength: osmMetadata.waySections.length,
-            refCoords,
-            refNodes
-          },
-          null,
-          4
-        )
-      );
-      return cb();
-    }
-
-    shpMetaAcc[shstReferenceId] = shpMetaAcc[shstReferenceId] || {};
-
-    const shpStartPt = _.first(shapeSegCoords);
-    const candidateStartIndices = refCoords.reduce((acc, refPt, i) => {
-      if (_.isEqual(shpStartPt, refPt)) {
-        acc.push(i);
+        this.push(
+          `${JSON.stringify(
+            turfHelpers.featureCollection(shape_output_features, {
+              id: curShapeId
+            })
+          )}\n`
+        );
       }
-      return acc;
-    }, []);
 
-    // LEFT OFF HERE
-    // for (let i = 0; i < shapeSegCoords.length; ++i) {
-    // const shpPoint = shapeSegCoords[i]
-    // const ids
-    // }
-    // shpMetaAcc[shstReferenceId]
+      curShapeId = gtfs_shape_id;
 
-    if (candidateStartIndices[0] !== 0 || candidateStartIndices.length > 1) {
-      this.push(
-        `${JSON.stringify({
-          shstReferenceId,
-          refCoords,
-          refNodes,
-          shstGeometry,
-          osmMetadata,
-          shapeSegCoords,
-          candidateStartIndices
-        })}\n`
-      );
+      shape_output_features = [];
     }
+
+    shape_output_features.push(
+      turfHelpers.lineString(
+        shstMatchCoords,
+        {
+          gtfs_shape_id,
+          gtfs_shape_seg_idx,
+          gtfs_shape_num_segs,
+          shstGeometryId,
+          shstReferenceId
+        },
+        { id: `${gtfs_shape_id}:${gtfs_shape_seg_idx}` }
+      )
+    );
 
     return cb();
   }),

@@ -3,14 +3,35 @@
 /* eslint no-await-in-loop: 0, no-loop-func: 0, no-continue: 0 */
 
 const { execSync } = require('child_process');
-const { join, basename } = require('path');
+const { appendFileSync } = require('fs');
+const { join } = require('path');
 const { sync: rimrafSync } = require('rimraf');
 const { sync: mkdirpSync } = require('mkdirp');
-// const Diff = require('diff');
 
 const yargs = require('yargs');
 
 const TILE_HIERARCHY_LEVEL = 8;
+
+const INITIAL_SEG_LEN = 2; // miles
+const MINIMUM_SEG_LEN = 0.015625; // miles ≈ 83 feet
+
+const INITIAL_SEARCH_RADIUS = 0;
+const MAXIMUM_SEARCH_RADIUS = 15;
+const SEARCH_RADIUS_STEP = 5;
+
+const chunkerPath = join(__dirname, './geojson_linestrings_chunker');
+
+const ROAD_TYPES = {
+  ALL: 'ALL',
+  MOTORWAY: 'MOTORWAY',
+  SURFACE_STREETS: 'SURFACE_STREETS'
+};
+
+const ROAD_TYPES_LIST = [
+  ROAD_TYPES.MOTORWAY,
+  ROAD_TYPES.SURFACE_STREETS,
+  ROAD_TYPES.ALL
+];
 
 const cliArgsSpec = {
   shapesGeoJSON: {
@@ -49,53 +70,108 @@ if (clean) {
 
 mkdirpSync(dataDir);
 
-const outBase = basename(shapesGeoJSON, '.geojson');
+const logFileStreamPath = join(dataDir, 'log');
 
-// const matchTypes = ['motorway', 'surface-streets'];
+const runSharedStreetsMatch = ({
+  iteration,
+  inFile,
+  outFile,
+  roadType = ROAD_TYPES.ALL,
+  searchRadius = 10,
+  snapIntersections = true,
+  tileHierarchyLevel = TILE_HIERARCHY_LEVEL
+}) => {
+  const snapIntersectionsFlag = snapIntersections ? '--snap-intersections' : '';
+
+  const roadTypeFlag = {
+    [ROAD_TYPES.ALL]: '',
+    [ROAD_TYPES.MOTORWAY]: '--match-motorway-only',
+    [ROAD_TYPES.SURFACE_STREETS]: '--match-surface-streets-only'
+  }[roadType];
+
+  const cmd = `
+    ${shst} match "${inFile}" \
+      ${snapIntersectionsFlag} \
+      ${roadTypeFlag} \
+      --search-radius=${searchRadius} \
+      --tile-hierarchy=${tileHierarchyLevel} \
+      --follow-line-direction \
+      --match-car \
+      --out="${outFile}"
+  `;
+
+  const shst_match_output = execSync(cmd, {
+    shell: true,
+    stdio: ['pipe'],
+    cwd: join(__dirname, '../')
+  }).toString();
+
+  appendFileSync(
+    logFileStreamPath,
+    `${JSON.stringify({
+      iteration,
+      shst_match_cmd: cmd.replace(/\s{1,}/g, ' '),
+      shst_match_output
+    })}\n`
+  );
+
+  console.log(shst_match_output);
+};
 
 (async () => {
   try {
-    let inf = join(process.cwd(), shapesGeoJSON);
-    let outf = join(outputDir, `${outBase}.motorway.geojson`);
+    let iteration = 0;
 
-    let cmd = `
-        ${shst} match "${inf}" \
-          --follow-line-direction \
-          --snap-intersections \
-          --match-motorway-only \
-          --match-car \
-          --tile-hierarchy=${TILE_HIERARCHY_LEVEL} \
-          --out="${outf}"
-      `;
+    // TODO: Interatively chunk input GeoJSON file LineStrings
+    let inFile = join(process.cwd(), shapesGeoJSON);
 
-    let stdout = execSync(cmd, {
-      shell: true,
-      stdio: ['pipe'],
-      cwd: join(__dirname, '../')
-    });
+    // Iterate over segment lengths
+    for (
+      let segmentLength = INITIAL_SEG_LEN;
+      segmentLength >= MINIMUM_SEG_LEN;
+      segmentLength /= 2
+    ) {
+      const outBase = `chunked_gtfs_shapes._${segmentLength}_mi_`;
+      const chunkedOutFilePath = join(dataDir, `${outBase}.geojson`);
 
-    console.log(stdout.toString());
+      execSync(
+        `${chunkerPath} --segmentLength=${segmentLength} < ${inFile} > ${chunkedOutFilePath}`
+      );
 
-    inf = outf.replace(/geojson$/, 'unmatched.geojson');
-    outf = join(outputDir, `${outBase}.surface-streets.geojson`);
+      inFile = chunkedOutFilePath;
 
-    cmd = `
-        ${shst} match "${inf}" \
-          --follow-line-direction \
-          --snap-intersections \
-          --match-surface-streets-only \
-          --match-car \
-          --tile-hierarchy=${TILE_HIERARCHY_LEVEL} \
-          --out="${outf}"
-      `;
+      // Iterate over searchRadius
+      for (
+        let searchRadius = INITIAL_SEARCH_RADIUS;
+        searchRadius < MAXIMUM_SEARCH_RADIUS;
+        searchRadius += SEARCH_RADIUS_STEP
+      ) {
+        // Iterate over road types
+        ROAD_TYPES_LIST.forEach(roadType => {
+          const snapIntersections =
+            segmentLength * 5280 * 3.28084 > Math.E * searchRadius;
 
-    stdout = execSync(cmd, {
-      shell: true,
-      stdio: ['pipe'],
-      cwd: join(__dirname, '../')
-    });
+          const outFile = join(outputDir, `${outBase}.${++iteration}.geojson`);
 
-    console.log(stdout.toString());
+          const shstMatchConfig = {
+            inFile,
+            outFile,
+            roadType,
+            searchRadius,
+            snapIntersections
+          };
+
+          appendFileSync(
+            logFileStreamPath,
+            `${JSON.stringify({ iteration, segmentLength, shstMatchConfig })}\n`
+          );
+
+          runSharedStreetsMatch(shstMatchConfig);
+
+          inFile = outFile.replace(/geojson$/, 'unmatched.geojson');
+        });
+      }
+    }
   } catch (err) {
     console.log('STDERR');
     console.error(err.toString());

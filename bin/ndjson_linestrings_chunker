@@ -1,0 +1,63 @@
+#!/usr/bin/env node
+
+// USAGE: Takes NDJSON stream of GeoJSON LineString Features through STDIN,
+//        chunks the each input LineString to the CLI specified segmentLength,
+//        and the chunked GeoJSON LineStrings as NDJSON to STDOUT.
+
+const { pipe, through } = require('mississippi');
+const split = require('split2');
+const turf = require('@turf/turf');
+const _ = require('lodash');
+
+const MILES = { units: 'miles' };
+
+const yargs = require('yargs');
+
+const cliArgsSpec = {
+  segmentLength: {
+    demand: true,
+    type: 'number',
+    description: 'Divide the LineString into chunks of this length in miles.'
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { segmentLength } = argv;
+
+pipe(
+  process.stdin,
+  split(JSON.parse),
+  through.obj(function chunker(feature, $, cb) {
+    const {
+      properties: { shape_id, seg_idx = null, seg_num = null }
+    } = feature;
+
+    const { features } = turf.lineChunk(feature, segmentLength, MILES);
+
+    const numSegs = features.length;
+    const padLen = numSegs.toString().length;
+
+    for (let i = 0; i < features.length; ++i) {
+      const f = features[i];
+      const thisSegIdx = _.padStart(i, padLen, '0');
+
+      f.properties = {
+        shape_id,
+        seg_idx: seg_idx === null ? thisSegIdx : `${seg_idx}.${thisSegIdx}`,
+        seg_num: seg_num === null ? features.length : `${seg_num}.${numSegs}`
+      };
+      this.push(`${JSON.stringify(features[i])}\n`);
+    }
+
+    cb();
+  }),
+  process.stdout
+);

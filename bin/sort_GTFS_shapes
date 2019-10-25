@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # This script sorts the shapes.txt CSV by shape_id, then shape_pt_sequence.
-# Guaranteeing shape_pt_sequence order simplifies later processing.
-# This order is required in the GTFS spec, but we want a hard guarantee.
-#   
+# Guaranteeing this order simplifies later processing.
+# The gtfs_shapes_to_ndjson script requires this sorting for input.
 
 set -e
 

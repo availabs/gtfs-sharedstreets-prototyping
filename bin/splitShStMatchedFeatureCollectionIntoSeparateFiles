@@ -1,0 +1,63 @@
+#!/usr/bin/env node
+
+/* eslint no-use-before-define: 0 */
+
+const { writeFileSync } = require('fs')
+const { join } = require('path')
+
+const { pipe, through } = require('mississippi');
+const split = require('split2');
+
+const { sync: rimrafSync } = require('rimraf');
+const { sync: mkdirpSync } = require('mkdirp');
+
+const yargs = require('yargs');
+
+const cliArgsSpec = {
+  outputDir: {
+    demand: true,
+    type: 'string'
+  },
+  clean: {
+    type: 'boolean',
+    description: 'Empty the outputDir before beginning.',
+    default: false
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { outputDir, clean } = argv;
+
+const dataDir = `${join(process.cwd(), outputDir)}/`;
+
+if (clean) {
+  rimrafSync(dataDir);
+}
+
+mkdirpSync(dataDir);
+
+pipe(
+  process.stdin,
+  split(),
+  through.obj(async function splitter(featureStr, $, cb) {
+    const { id } = JSON.parse(featureStr)
+
+    const outFile = join(dataDir, `shape.${id}.matched.geojson`)
+    writeFileSync(outFile, featureStr)
+
+    return cb();
+  }),
+  async err => {
+    if (err) {
+      console.error(err);
+    }
+  }
+);

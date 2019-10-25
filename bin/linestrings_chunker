@@ -1,0 +1,47 @@
+#!/usr/bin/env node
+
+// USAGE: Takes GTFS shapes.txt through STDIN
+//        and outputs a NDJSON stream to STDOUT
+//        in which each line is a GeoJSON LineString Feature.
+
+const { pipe, through } = require('mississippi');
+const split = require('split2');
+const { lineChunk } = require('@turf/turf');
+
+const MILES = { units: 'miles' };
+
+const yargs = require('yargs');
+
+const cliArgsSpec = {
+  segmentLength: {
+    demand: true,
+    type: 'string',
+    description: 'Divide the LineString into chunks of this length in miles.'
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { segmentLength } = argv;
+
+pipe(
+  process.stdin,
+  split(JSON.parse),
+  through.obj(function chunker(feature, _, cb) {
+    const { features } = lineChunk(feature, segmentLength, MILES);
+
+    for (let i = 0; i < features.length; ++i) {
+      this.push(`${JSON.stringify(features[i])}\n`);
+    }
+
+    cb();
+  }),
+  process.stdout
+);

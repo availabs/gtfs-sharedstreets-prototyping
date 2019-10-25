@@ -1,0 +1,74 @@
+#!/usr/bin/env node
+
+// USAGE: Takes GTFS shapes GeoJSON FeatureCollection of LineStrings through STDIN,
+//        chunks each LineString to the CLI specified segmentLength,
+//        and outputs a GeoJSON FeatureCollection of the chunked LineStrings
+
+const { exec } = require('child_process');
+const { join } = require('path');
+const { duplex, pipe } = require('mississippi');
+
+const yargs = require('yargs');
+
+const chunkerPath = join(__dirname, './ndjson_linestrings_chunker');
+const ndjsonToGeoJSONPath = join(__dirname, './ndjson_to_geojson');
+
+const cliArgsSpec = {
+  segmentLength: {
+    demand: true,
+    type: 'number',
+    description: 'Divide the LineString into chunks of this length in miles.'
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { segmentLength } = argv;
+
+const {
+  stdin: featureStreamSTDIN,
+  stdout: featureStreamSTDOUT,
+  stderr: featureStreamSTDERR
+} = exec('jq -c .features[]', {
+  maxBuffer: Infinity
+});
+
+const featuresStream = duplex(featureStreamSTDIN, featureStreamSTDOUT);
+featureStreamSTDERR.pipe(process.stderr);
+
+const {
+  stdin: chunksStreamSTDIN,
+  stdout: chunksStreamSTDOUT,
+  stderr: chunksStreamSTDERR
+} = exec(`${chunkerPath} --segmentLength=${segmentLength}`, {
+  maxBuffer: Infinity
+});
+
+const chunksStream = duplex(chunksStreamSTDIN, chunksStreamSTDOUT);
+chunksStreamSTDERR.pipe(process.stderr);
+
+const {
+  stdin: geojsonStreamSTDIN,
+  stdout: geojsonStreamSTDOUT,
+  stderr: geojsonStreamSTDERR
+} = exec(`${ndjsonToGeoJSONPath} --segmentLength=${segmentLength}`, {
+  maxBuffer: Infinity
+});
+
+const geojsonStream = duplex(geojsonStreamSTDIN, geojsonStreamSTDOUT);
+geojsonStreamSTDERR.pipe(process.stderr);
+
+pipe(
+  process.stdin,
+  featuresStream,
+  chunksStream,
+  geojsonStream,
+  process.stdout
+);

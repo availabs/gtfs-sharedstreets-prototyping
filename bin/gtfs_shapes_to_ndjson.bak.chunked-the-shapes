@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 
-// USAGE: Takes GTFS shapes.txt through STDIN
-//        and outputs a NDJSON stream to STDOUT
+// USAGE: Takes GTFS shapes.txt through STDIN 
+//        and outputs a NDJSON stream to STDOUT 
 //        in which each line is a GeoJSON LineString Feature.
-//   NOTE: Input must be in sorted order. See bin/sort_GTFS_shapes.
 
 const { pipe, through } = require('mississippi');
 const csv = require('fast-csv');
+const { lineChunk } = require('@turf/turf');
 const { lineString } = require('@turf/helpers');
 
 let curShapeId = null;
 let coordinates = null;
 let prevShpPtSeq = null;
+
+const MILES = { units: 'miles' };
+const CHUNK_SEG_LEN = 0.0125;
 
 pipe(
   process.stdin,
@@ -30,18 +33,20 @@ pipe(
         }
 
         if (curShapeId !== null) {
-          if (coordinates.length > 1) {
-            const feature = lineString(coordinates, { shape_id: curShapeId });
-            this.push(`${JSON.stringify(feature)}\n`);
-          } else {
-            console.warn(
-              'WARNING: Shape',
-              curShapeId,
-              'has less than two coordinates. Skipping it.'
-            );
+          const feature = lineString(coordinates);
+
+          const { features } = lineChunk(feature, CHUNK_SEG_LEN, MILES);
+
+          for (let i = 0; i < features.length; ++i) {
+            const f = features[i];
+            f.properties = {
+              shape_id: curShapeId,
+              seg_idx: i,
+              seg_num: features.length
+            };
+            this.push(`${JSON.stringify(features[i])}\n`);
           }
         }
-
         curShapeId = shape_id;
         coordinates = [];
         prevShpPtSeq = -1;
