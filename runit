@@ -4,8 +4,8 @@ set -e
 
 WORKDIR='workdir'
 
-rm -rf "$WORKDIR"
-# mkdir "$WORKDIR"
+# rm -rf "$WORKDIR"
+mkdir "$WORKDIR"
 
 ./bin/sort_GTFS_shapes < data/CDTA/shapes.txt > "${WORKDIR}/cdta.shapes.sorted.txt"
 
