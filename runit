@@ -2,22 +2,25 @@
 
 set -e
 
-WORKDIR='workdir'
+AGENCY="MTA"
+WORKDIR="${AGENCY,,}_workdir"
 
-# rm -rf "$WORKDIR"
-mkdir "$WORKDIR"
+rm -rf "$WORKDIR"
+mkdir -p "$WORKDIR"
 
-./bin/sort_GTFS_shapes < data/CDTA/shapes.txt > "${WORKDIR}/cdta.shapes.sorted.txt"
+./bin/sort_GTFS_shapes < "data/${AGENCY}/shapes.txt" > "${WORKDIR}/${AGENCY,,}.shapes.sorted.txt"
 
-./bin/gtfs_shapes_to_ndjson < "${WORKDIR}/cdta.shapes.sorted.txt" |
-  ./bin/ndjson_to_geojson > "${WORKDIR}/cdta.shapes.geojson"
+./bin/gtfs_shapes_to_ndjson < "${WORKDIR}/${AGENCY,,}.shapes.sorted.txt" |
+  ./bin/ndjson_to_geojson > "${WORKDIR}/${AGENCY,,}.shapes.geojson"
 
 ./bin/runSharedStreets \
-  --shapesGeoJSON "${WORKDIR}/cdta.shapes.geojson" \
+  --shapesGeoJSON "${WORKDIR}/${AGENCY,,}.shapes.geojson" \
   --outputDir "${WORKDIR}/shst" --clean
 
-./bin/concatShStMatchesIntoNDJSON "${WORKDIR}/shst" > "${WORKDIR}/cdta.matched.ndjson"
+./bin/concatShStMatchesIntoNDJSON "${WORKDIR}/shst" > "${WORKDIR}/${AGENCY,,}.matched.ndjson"
+./bin/ndjson_to_geojson < "${WORKDIR}/${AGENCY,,}.matched.ndjson" > "${WORKDIR}/${AGENCY,,}.matched.geojson"
 
-./bin/combineSharedStreetMatchedGTFSShapesChunks < "${WORKDIR}/cdta.matched.ndjson" > "${WORKDIR}/cdta.matched.combined.ndjson"
+./bin/combineSharedStreetMatchedGTFSShapesChunks < "${WORKDIR}/${AGENCY,,}.matched.ndjson" > "${WORKDIR}/${AGENCY,,}.matched.combined.ndjson"
 
-./bin/splitShStMatchedFeatureCollectionIntoSeparateFiles --outputDir "${WORKDIR}/shape_geojsons" < "${WORKDIR}/cdta.matched.combined.ndjson"
+./bin/splitShStMatchedFeatureCollectionIntoSeparateFiles --outputDir "${WORKDIR}/shape_geojsons" < "${WORKDIR}/${AGENCY,,}.matched.combined.ndjson"
+
